@@ -1,0 +1,25 @@
+package com.example;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@SpringBootApplication
+@RestController
+public class HelloWebApplication {
+    
+    public static void main(String[] args) {
+        SpringApplication.run(HelloWebApplication.class, args);
+    }
+    
+    @GetMapping("/")
+    public String hello() {
+        return "Hello World from Spring Boot Web Application!";
+    }
+    
+    @GetMapping("/health")
+    public String health() {
+        return "OK";
+    }
+}

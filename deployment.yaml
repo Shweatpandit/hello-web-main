@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-web
+  namespace: hello
+  labels:
+    app: hello-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-web
+  template:
+    metadata:
+      labels:
+        app: hello-web
+    spec:
+      imagePullSecrets:
+      - name: regcred
+      containers:
+      - name: hello-web
+        image: REPLACE_REGISTRY/hello-web:1.0.1
+        ports:
+        - containerPort: 9090
+        env:
+        - name: SERVER_PORT
+          value: "9090"  # ✅ FORCE Spring Boot to use port 9090
+        - name: SPRING_APPLICATION_NAME
+          value: "hello-web"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
