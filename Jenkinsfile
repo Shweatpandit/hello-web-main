@@ -4,7 +4,7 @@ pipeline {
     environment {
         IMAGE_NAME = "hello-web"
         IMAGE_TAG  = "1.0.1"
-        NEXUS_URL  = "http://172.17.0.2:8082"   // Use HTTP explicitly
+        NEXUS_URL  = "localhost:8082"
         NEXUS_USER = "admin"
         NAMESPACE  = "hello"
     }
@@ -24,9 +24,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh """
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                """
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
@@ -34,8 +32,7 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'NEXUS_PASS', variable: 'NPASS')]) {
                     sh """
-                        # Login using HTTP
-                        echo \$NPASS | docker login ${NEXUS_URL} -u ${NEXUS_USER} --password-stdin
+                        echo $NPASS | docker login ${NEXUS_URL} -u ${NEXUS_USER} --password-stdin
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${NEXUS_URL}/${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${NEXUS_URL}/${IMAGE_NAME}:${IMAGE_TAG}
                     """
@@ -47,15 +44,12 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'NEXUS_PASS', variable: 'NPASS')]) {
                     sh """
-                        # Create namespace if it doesn't exist
                         kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        # Delete existing secret if any
                         kubectl delete secret regcred -n ${NAMESPACE} --ignore-not-found
-                        # Create new docker-registry secret
                         kubectl create secret docker-registry regcred \
                             --docker-server=${NEXUS_URL} \
                             --docker-username=${NEXUS_USER} \
-                            --docker-password=\$NPASS \
+                            --docker-password=$NPASS \
                             -n ${NAMESPACE}
                     """
                 }
@@ -65,7 +59,6 @@ pipeline {
         stage('Deploy to Minikube') {
             steps {
                 sh """
-                    # Apply Deployment and Service manifests
                     kubectl apply -n ${NAMESPACE} -f k8s/deployment.yaml
                     kubectl apply -n ${NAMESPACE} -f k8s/service.yaml
                 """
@@ -93,6 +86,3 @@ pipeline {
         }
     }
 }
-
-
-
