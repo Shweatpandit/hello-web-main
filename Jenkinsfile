@@ -4,7 +4,7 @@ pipeline {
     environment {
         IMAGE_NAME = "hello-web"
         IMAGE_TAG  = "1.0.1"
-        NEXUS_URL  = "172.17.0.2:8082"   // Change this if Nexus IP changes
+        NEXUS_URL  = "http://172.17.0.2:8082"   // Use HTTP explicitly
         NEXUS_USER = "admin"
         NAMESPACE  = "hello"
     }
@@ -34,7 +34,8 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'NEXUS_PASS', variable: 'NPASS')]) {
                     sh """
-                        echo $NPASS | docker login ${NEXUS_URL} -u ${NEXUS_USER} --password-stdin
+                        # Login using HTTP
+                        echo \$NPASS | docker login ${NEXUS_URL} -u ${NEXUS_USER} --password-stdin
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${NEXUS_URL}/${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${NEXUS_URL}/${IMAGE_NAME}:${IMAGE_TAG}
                     """
@@ -44,24 +45,28 @@ pipeline {
 
         stage('Create imagePullSecret in Kubernetes') {
             steps {
-                sh """
-                    kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                    kubectl delete secret regcred -n ${NAMESPACE} --ignore-not-found
-                    kubectl create secret docker-registry regcred \
-                        --docker-server=${NEXUS_URL} \
-                        --docker-username=${NEXUS_USER} \
-                        --docker-password=$NPASS \
-                        -n ${NAMESPACE}
-                """
+                withCredentials([string(credentialsId: 'NEXUS_PASS', variable: 'NPASS')]) {
+                    sh """
+                        # Create namespace if it doesn't exist
+                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        # Delete existing secret if any
+                        kubectl delete secret regcred -n ${NAMESPACE} --ignore-not-found
+                        # Create new docker-registry secret
+                        kubectl create secret docker-registry regcred \
+                            --docker-server=${NEXUS_URL} \
+                            --docker-username=${NEXUS_USER} \
+                            --docker-password=\$NPASS \
+                            -n ${NAMESPACE}
+                    """
+                }
             }
         }
 
         stage('Deploy to Minikube') {
             steps {
                 sh """
-                    # Apply Deployment
+                    # Apply Deployment and Service manifests
                     kubectl apply -n ${NAMESPACE} -f k8s/deployment.yaml
-                    # Apply Service
                     kubectl apply -n ${NAMESPACE} -f k8s/service.yaml
                 """
             }
@@ -88,4 +93,6 @@ pipeline {
         }
     }
 }
+
+
 
