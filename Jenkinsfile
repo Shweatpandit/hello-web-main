@@ -2,17 +2,19 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "hello-web"
-        IMAGE_TAG  = "1.0.1"
-        NEXUS_URL  = "localhost:8082"
-        NEXUS_USER = "admin"
-        NAMESPACE  = "hello"
+        REGISTRY        = "localhost:8082"
+        IMAGE_NAME      = "hello-web"
+        IMAGE_TAG       = "1.0.1"
+        NEXUS_CREDS_ID  = "nexus-docker"
+        KUBECONFIG      = '/home/jenkins/.kube/config'
+        NAMESPACE       = "hello"
     }
 
     stages {
-        stage('Checkout SCM') {
+
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Shweatpandit/hello-web-main.git'
+                checkout scm
             }
         }
 
@@ -24,17 +26,19 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                sh """
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                """
             }
         }
 
         stage('Push to Nexus') {
             steps {
-                withCredentials([string(credentialsId: 'NEXUS_PASS', variable: 'NPASS')]) {
+                withCredentials([usernamePassword(credentialsId: env.NEXUS_CREDS_ID, usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
                     sh """
-                        echo $NPASS | docker login ${NEXUS_URL} -u ${NEXUS_USER} --password-stdin
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${NEXUS_URL}/${IMAGE_NAME}:${IMAGE_TAG}
-                        docker push ${NEXUS_URL}/${IMAGE_NAME}:${IMAGE_TAG}
+                        echo "${NPASS}" | docker login ${REGISTRY} -u "${NUSER}" --password-stdin
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
                     """
                 }
             }
@@ -42,14 +46,14 @@ pipeline {
 
         stage('Create imagePullSecret in Kubernetes') {
             steps {
-                withCredentials([string(credentialsId: 'NEXUS_PASS', variable: 'NPASS')]) {
+                withCredentials([usernamePassword(credentialsId: env.NEXUS_CREDS_ID, usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
                     sh """
                         kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        kubectl delete secret regcred -n ${NAMESPACE} --ignore-not-found
+                        kubectl delete secret regcred --ignore-not-found -n ${NAMESPACE}
                         kubectl create secret docker-registry regcred \
-                            --docker-server=${NEXUS_URL} \
-                            --docker-username=${NEXUS_USER} \
-                            --docker-password=$NPASS \
+                            --docker-server=${REGISTRY} \
+                            --docker-username="${NUSER}" \
+                            --docker-password="${NPASS}" \
                             -n ${NAMESPACE}
                     """
                 }
@@ -59,30 +63,24 @@ pipeline {
         stage('Deploy to Minikube') {
             steps {
                 sh """
-                    kubectl apply -n ${NAMESPACE} -f k8s/deployment.yaml
-                    kubectl apply -n ${NAMESPACE} -f k8s/service.yaml
+                    # Replace registry placeholder in deployment.yaml
+                    sed "s|REPLACE_REGISTRY|${REGISTRY}|g" deployment.yaml | kubectl apply -n ${NAMESPACE} -f -
+                    kubectl apply -n ${NAMESPACE} -f service.yaml
+                    kubectl rollout status deployment/hello-web -n ${NAMESPACE} --timeout=120s
                 """
             }
         }
 
-        stage('Post Actions: Check Status') {
-            steps {
-                sh """
-                    echo === Pods Status ===
-                    kubectl get pods -n ${NAMESPACE} -o wide
-                    echo === Services Status ===
-                    kubectl get svc -n ${NAMESPACE} -o wide
-                """
-            }
-        }
     }
 
     post {
-        failure {
-            echo "Pipeline failed! Check the logs above."
-        }
-        success {
-            echo "Pipeline completed successfully!"
+        always {
+            sh """
+                echo "=== Pods Status ==="
+                kubectl get pods -n ${NAMESPACE} -o wide
+                echo "=== Services Status ==="
+                kubectl get svc -n ${NAMESPACE} -o wide
+            """
         }
     }
 }
