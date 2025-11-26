@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY        = "localhost:8082"      // Nexus registry
+        REGISTRY        = "localhost:8081"      // Nexus registry
         IMAGE_NAME      = "hello-web"
         IMAGE_TAG       = "1.0.1"
         NEXUS_CREDS_ID  = "nexus-docker"        // Jenkins me saved credentials
@@ -83,3 +83,4 @@ pipeline {
         }
     }
 }
+
