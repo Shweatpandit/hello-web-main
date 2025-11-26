@@ -36,7 +36,7 @@ pipeline {
             steps {
                 withCredentials([usernamePassword(credentialsId: env.NEXUS_CREDS_ID, usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
                     sh """
-                        echo "${NPASS}" | docker login ${REGISTRY} -u "${NUSER}" --password-stdin
+                        echo "${NPASS}" | docker login ${REGISTRY} -u "${NUSER}" --password-admin123
                         docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
                         docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
                     """
@@ -83,4 +83,5 @@ pipeline {
         }
     }
 }
+
 
