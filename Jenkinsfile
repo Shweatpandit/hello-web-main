@@ -2,13 +2,13 @@ pipeline {
     agent any
 
     environment {
-   REGISTRY        = "localhost:8082"   // <- use localhost
-   IMAGE_NAME      = "hello-web"
-   IMAGE_TAG       = "1.0.1"
-   NEXUS_CREDS_ID  = "nexus-docker"
-   KUBECONFIG      = '/home/jenkins/.kube/config'
-}
-
+        REGISTRY        = "localhost:8082"      // Nexus registry
+        IMAGE_NAME      = "hello-web"
+        IMAGE_TAG       = "1.0.1"
+        NEXUS_CREDS_ID  = "nexus-docker"        // Jenkins me saved credentials
+        KUBECONFIG      = '/home/jenkins/.kube/config'
+        NAMESPACE       = "hello"
+    }
 
     stages {
 
@@ -44,17 +44,17 @@ pipeline {
             }
         }
 
-        stage('Create imagePullSecret in Kubernetes') {
+        stage('Create imagePullSecret') {
             steps {
                 withCredentials([usernamePassword(credentialsId: env.NEXUS_CREDS_ID, usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
                     sh """
                         kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         kubectl delete secret regcred --ignore-not-found -n ${NAMESPACE}
                         kubectl create secret docker-registry regcred \
-                            --docker-server=${REGISTRY} \
-                            --docker-username="${NUSER}" \
-                            --docker-password="${NPASS}" \
-                            -n ${NAMESPACE}
+                          --docker-server=${REGISTRY} \
+                          --docker-username=${NUSER} \
+                          --docker-password=${NPASS} \
+                          -n ${NAMESPACE}
                     """
                 }
             }
@@ -63,7 +63,6 @@ pipeline {
         stage('Deploy to Minikube') {
             steps {
                 sh """
-                    # Replace registry placeholder in deployment.yaml
                     sed "s|REPLACE_REGISTRY|${REGISTRY}|g" deployment.yaml | kubectl apply -n ${NAMESPACE} -f -
                     kubectl apply -n ${NAMESPACE} -f service.yaml
                     kubectl rollout status deployment/hello-web -n ${NAMESPACE} --timeout=120s
@@ -75,13 +74,12 @@ pipeline {
 
     post {
         always {
-            sh """
+            sh '''
                 echo "=== Pods Status ==="
-                kubectl get pods -n ${NAMESPACE} -o wide
+                kubectl get pods -n hello -o wide
                 echo "=== Services Status ==="
-                kubectl get svc -n ${NAMESPACE} -o wide
-            """
+                kubectl get svc -n hello -o wide
+            '''
         }
     }
 }
-
