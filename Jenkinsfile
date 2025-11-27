@@ -32,9 +32,9 @@ pipeline {
 
         stage('Docker Login') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus-creds',
+                withCredentials([usernamePassword(credentialsId: 'nexus-docker',
                                                  usernameVariable: 'USER',
-                                                 passwordVariable: 'PASS')]) {
+                                                 passwordVariable: 'PASS')]) {   // <-- CHANGED HERE
                     sh """
                         echo "$PASS" | docker login ${REGISTRY} -u "$USER" --password-stdin
                     """
