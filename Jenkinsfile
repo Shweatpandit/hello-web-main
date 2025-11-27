@@ -7,7 +7,7 @@ pipeline {
    IMAGE_NAME      = "hello-web"
    IMAGE_TAG       = "1.0.1"
    NEXUS_CREDS_ID  = "nexus-docker"
-   KUBECONFIG      = '/root/.kube/config'
+   KUBECONFIG      = '/home/jenkins/.kube/config'
  }
 
 
@@ -97,5 +97,3 @@ pipeline {
    }
  }
 }
-
-
