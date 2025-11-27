@@ -2,88 +2,68 @@ pipeline {
     agent any
 
     environment {
-        REGISTRY        = "192.168.1.12:8082"        // Nexus address
-        IMAGE_NAME      = "hello-web"
-        IMAGE_TAG       = "1.0.1"
-        NEXUS_CREDS_ID  = "nexus-docker"         // Jenkins me saved credentials
-        KUBECONFIG      = '/home/jenkins/.kube/config'
-        NAMESPACE       = "hello"
+        REGISTRY = "localhost:8082"       // Nexus Docker registry
+        IMAGE_NAME = "hello-app"          // Your app image name
+        KUBECONFIG = "/root/.kube/config" // So kubectl works inside Jenkins container
     }
 
     stages {
 
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                checkout scm
+                git branch: 'main',
+                url: 'https://github.com/Shweatpandit/hello-web-main.git'
             }
         }
 
-        stage('Build JAR') {
+        stage('Maven Build') {
             steps {
-                sh 'mvn clean package -DskipTests -B'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Docker Build') {
             steps {
                 sh """
-                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                    docker build -t ${REGISTRY}/${IMAGE_NAME}:latest .
                 """
             }
         }
 
-        stage('Push to Nexus') {
+        stage('Docker Login') {
             steps {
-                withCredentials([usernamePassword(credentialsId: env.NEXUS_CREDS_ID, usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
+                withCredentials([usernamePassword(credentialsId: 'nexus-creds',
+                                                 usernameVariable: 'USER',
+                                                 passwordVariable: 'PASS')]) {
                     sh """
-                        echo "\$NPASS" | docker login ${REGISTRY} -u "\$NUSER" --password-stdin
-                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
-                        docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}
+                        echo "$PASS" | docker login ${REGISTRY} -u "$USER" --password-stdin
                     """
                 }
             }
         }
 
-        stage('Create imagePullSecret') {
+        stage('Docker Push') {
             steps {
-                withCredentials([usernamePassword(credentialsId: env.NEXUS_CREDS_ID, usernameVariable: 'NUSER', passwordVariable: 'NPASS')]) {
-                    sh """
-                        kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        kubectl delete secret regcred --ignore-not-found -n ${NAMESPACE}
-                        kubectl create secret docker-registry regcred \
-                            --docker-server=${REGISTRY} \
-                            --docker-username="\$NUSER" \
-                            --docker-password="\$NPASS" \
-                            -n ${NAMESPACE}
-                    """
-                }
+                sh "docker push ${REGISTRY}/${IMAGE_NAME}:latest"
             }
         }
 
-        stage('Deploy to Minikube') {
+        stage('K8s Deploy') {
             steps {
                 sh """
-                    # Apply manifests
-                    sed "s|REPLACE_REGISTRY|${REGISTRY}|g" deployment.yaml | kubectl apply -n ${NAMESPACE} -f -
-                    kubectl apply -n ${NAMESPACE} -f service.yaml
-                    
-                    # Wait for rollout
-                    kubectl rollout status deployment/hello-web -n ${NAMESPACE} --timeout=120s
+                    kubectl set image deployment/hello-app hello-app=${REGISTRY}/${IMAGE_NAME}:latest --namespace default || \
+                    kubectl apply -f k8s/deployment.yaml
                 """
             }
         }
     }
 
     post {
-        always {
-            sh """
-                echo "=== Pods Status ==="
-                kubectl get pods -n ${NAMESPACE} -o wide
-                echo "=== Services Status ==="
-                kubectl get svc -n ${NAMESPACE} -o wide
-            """
+        success {
+            echo "🎉 Deployment completed successfully!"
+        }
+        failure {
+            echo "❌ Deployment failed!"
         }
     }
 }
-
-
